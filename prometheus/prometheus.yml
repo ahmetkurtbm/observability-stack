@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Metrics from all projects arrive via remote-write from the OTel Collector
+# (see --web.enable-remote-write-receiver in docker-compose.yml), so no
+# scrape_configs are needed for the apps themselves. We only self-scrape
+# Prometheus for its own health/metrics.
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

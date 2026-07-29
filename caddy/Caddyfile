@@ -1,0 +1,21 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Grafana UI
+{$GRAFANA_DOMAIN} {
+	reverse_proxy grafana:3000
+}
+
+# OTLP/HTTP ingest — auth (basic auth / bearer token) is enforced by the
+# otel-collector itself via the basicauth/server extension, Caddy only
+# terminates TLS here.
+{$OTEL_DOMAIN} {
+	reverse_proxy otel-collector:4318
+}
+
+# OTLP/gRPC ingest (h2c) — used if an app's OTel SDK exports over gRPC
+# instead of HTTP.
+{$OTEL_GRPC_DOMAIN} {
+	reverse_proxy h2c://otel-collector:4317
+}

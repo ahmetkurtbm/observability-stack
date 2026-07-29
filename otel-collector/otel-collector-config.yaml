@@ -1,0 +1,57 @@
+extensions:
+  basicauth/server:
+    htpasswd:
+      file: /etc/otel-collector/htpasswd
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: basicauth/server
+      grpc:
+        endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: basicauth/server
+
+processors:
+  batch:
+    timeout: 5s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+  # Keeps the service.name resource attribute (set per-app, e.g. "gatehub",
+  # "receiptflow") on every metric/log/span so Grafana's $service variable
+  # can filter or aggregate across all projects.
+  resource:
+    attributes:
+      - key: service.name
+        action: upsert
+
+exporters:
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  extensions: [basicauth/server]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [loki]
