@@ -5,14 +5,16 @@
 // Required packages:
 //   npm i @vercel/otel @opentelemetry/api
 //
-// Required env vars (set in Vercel project settings, per project):
+// Required env vars (set in Vercel project settings, per project) — values
+// come from your free Grafana Cloud stack's "Configure > OpenTelemetry" page:
 //   OTEL_SERVICE_NAME              e.g. "gatehub"
-//   OTEL_EXPORTER_OTLP_ENDPOINT    e.g. "https://otel.yourdomain.com"
-//   OTEL_EXPORTER_OTLP_HEADERS     e.g. "Authorization=Basic <base64 user:pass>"
+//   OTEL_EXPORTER_OTLP_ENDPOINT    Grafana Cloud OTLP gateway URL (given on that page)
+//   OTEL_EXPORTER_OTLP_HEADERS     Authorization=Basic <base64 instanceId:apiToken> (given on that page)
 //
 // @vercel/otel reads OTEL_EXPORTER_OTLP_* env vars automatically and
 // exports traces + Next.js's built-in metrics (route handler duration,
-// fetch calls, etc.) over OTLP/HTTP to the shared collector.
+// fetch calls, etc.) over OTLP/HTTP directly to Grafana Cloud — no
+// self-hosted collector/server needed.
 
 import { registerOTel } from "@vercel/otel";
 

@@ -1,48 +1,49 @@
-# Observability Stack (Prometheus + Loki + Tempo + Grafana + OTel Collector)
+# Observability — Grafana Cloud (ücretsiz) ile GateHub, ReceiptFlow, TestMetrix vb.
 
-Merkezi, tüm Vercel projelerinin (GateHub, ReceiptFlow, TestMetrix, ...) metrik/log/trace verisini push ettiği ortak gözlemlenebilirlik altyapısı. Detaylı mimari kararları için proje planına bakın.
+Tüm Vercel projelerinin metrik/log/trace verisini tek bir yerde görmek için, ücretsiz bir Grafana Cloud hesabı kullanıyoruz. **Kendi sunucu, domain veya Docker kurulumu gerekmiyor** — Prometheus (Mimir), Loki, Tempo ve Grafana'nın hepsi Grafana Cloud'un ücretsiz tier'ında hazır geliyor.
+
+> Bu repoda ayrıca `docker-compose.yml`, `caddy/`, `otel-collector/`, `prometheus/`, `loki/`, `tempo/` gibi kendi sunucunda (VPS) barındırma için hazırlanmış dosyalar da var. Ücretsiz yol seçildiği için bunlar **şu an kullanılmıyor**, ileride kendi sunucunu kurmak istersen referans olarak duruyor.
 
 ## Neden push-based?
 
-Uygulamalar Vercel'de serverless çalıştığından Prometheus'un klasik pull/scrape modeli kullanılamaz. Bunun yerine her uygulama OpenTelemetry SDK'sı ile telemetriyi (metrik/log/trace) `otel-collector`'a **push** eder; collector bunları Prometheus, Loki ve Tempo'ya dağıtır.
+Uygulamalar Vercel'de serverless çalıştığından Prometheus'un klasik pull/scrape modeli kullanılamaz. Bunun yerine her uygulama OpenTelemetry SDK'sı ile telemetriyi (metrik/log/trace) doğrudan Grafana Cloud'un OTLP adresine **push** eder.
 
-## Kurulum (VPS üzerinde)
+## Kurulum (ücretsiz, sunucusuz)
 
-1. DNS: `GRAFANA_DOMAIN`, `OTEL_DOMAIN`, `OTEL_GRPC_DOMAIN` için VPS IP'sine A kaydı ekle.
-2. `.env.example` dosyasını `.env` olarak kopyala, gerçek değerleri doldur.
-3. OTLP ingest için kullanıcı adı/şifre oluştur (tüm uygulamalar bu tek kimlik bilgisini kullanır — proje bazlı ayrım `service.name` resource attribute'u ile yapılır, ayrı token gerekmez):
-   ```bash
-   docker run --rm httpd:2.4-alpine htpasswd -Bbn otel-ingest "GUCLU_BIR_SIFRE" > otel-collector/htpasswd
-   ```
-4. Ayağa kaldır:
-   ```bash
-   docker compose up -d
-   ```
-5. `https://GRAFANA_DOMAIN` adresine gidip `admin` / `.env`'deki şifre ile giriş yap. Prometheus/Loki/Tempo datasource'ları otomatik provision edilmiş olmalı (Connections → Data sources).
+1. [grafana.com/auth/sign-up](https://grafana.com/auth/sign-up) adresinden e-posta ile ücretsiz kaydol (kredi kartı istemez). Kayıt sonrası otomatik bir "stack" (Grafana instance'ı) oluşur.
+2. Grafana Cloud portalında stack'ine gir → **Configure / Connections → OpenTelemetry**. Burada sana özel hazır olarak şunlar verilir:
+   - `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP gateway URL'i)
+   - `Authorization: Basic <base64>` header'ı (Instance ID + API Token'dan otomatik üretilmiş)
+3. Bu iki değeri bir sonraki adımda kullanacaksın.
 
-## Bir uygulamayı bağlamak
+## Bir uygulamayı bağlamak (GateHub örneği)
 
-`examples/gatehub-otel/` klasöründeki örneğe bakın — Next.js projesine `instrumentation.ts` eklemek ve birkaç paket kurmaktan ibaret. Diğer projelere aynı dosyayı kopyalayıp sadece `serviceName` değerini değiştirmen yeterli.
-
-Ortam değişkenleri (her Vercel projesinde ayrı ayrı tanımlanır):
-```
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.yourdomain.com
-OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(otel-ingest:GUCLU_BIR_SIFRE)>
-OTEL_SERVICE_NAME=gatehub
-```
+`examples/gatehub-otel/` klasöründeki dosyalara bak:
+- `instrumentation.ts` → Next.js projesinin köküne kopyala.
+- `npm i @vercel/otel` çalıştır.
+- Vercel projesinin **Settings → Environment Variables** kısmına ekle:
+  ```
+  OTEL_SERVICE_NAME=gatehub
+  OTEL_EXPORTER_OTLP_ENDPOINT=<Grafana Cloud'dan aldığın URL>
+  OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <Grafana Cloud'dan aldığın base64 token>
+  ```
+- Deploy et.
 
 ## Doğrulama
 
-- Grafana → Explore → Loki: `{service_name="gatehub"}` sorgusu ile logların geldiğini gör.
-- Grafana → Explore → Prometheus: `{__name__=~".+", service_name="gatehub"}` ile metriklerin geldiğini gör.
-- Grafana → Explore → Tempo: son trace'leri ara, bir trace açıp "Logs for this span" ile Loki'ye, "Node graph" ile servis haritasına geçebildiğini doğrula.
+- Grafana Cloud → **Explore** → Prometheus datasource: `{service_name="gatehub"}` sorgusuyla metrik geldiğini gör.
+- Grafana Cloud → **Explore** → Loki datasource: `{service_name="gatehub"}` sorgusuyla logların geldiğini gör.
+- Grafana Cloud → **Explore** → Tempo datasource: son trace'leri ara, birini açıp detaylarını incele.
+- Grafana Cloud'un otomatik "Application Observability" dashboard'una bak — istek sayısı/hata oranı/gecikme grafikleri panel yazmadan hazır gelir.
 
 ## Yeni proje eklemek
 
-Yeni bir Vercel projesine sadece `examples/gatehub-otel/instrumentation.ts` dosyasını kopyala, `OTEL_SERVICE_NAME`'i değiştir, aynı `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` env'lerini tanımla. Altyapıda hiçbir değişiklik gerekmez.
+`examples/gatehub-otel/instrumentation.ts` dosyasını yeni projeye kopyala, sadece `OTEL_SERVICE_NAME`'i değiştir (`receiptflow`, `testmetrix` vb.), aynı `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` değerlerini kullan. Grafana Cloud tarafında hiçbir ek işlem gerekmez — aynı ücretsiz hesap tüm projeleri kabul eder.
 
-## Ölçek büyürse
+## Ücretsiz kota
 
-- `prometheus` servisini `grafana/mimir`e çevir (yatay ölçeklenebilir remote-write hedefi).
-- Loki/Tempo storage backend'ini `filesystem`'den S3-uyumlu bir object storage'a (Cloudflare R2, Backblaze B2) taşı.
-- `otel-collector`'ı birden fazla instance + basit bir load balancer arkasına al.
+Grafana Cloud Free tier: ~10.000 metrik serisi, 50GB log, 50GB trace/ay, 14 gün saklama, 3 kullanıcı, kredi kartı istemiyor, süresiz. Birkaç hobi projesi için fazlasıyla yeterli. Kota aşılırsa veri toplamayı durdurur, otomatik ücretli plana geçmez.
+
+## İleride kendi sunucunu kurmak istersen
+
+Bu repodaki `docker-compose.yml` + `otel-collector/` + `prometheus/` + `loki/` + `tempo/` + `caddy/` dosyaları tam bağımsız bir self-hosted alternatif sunuyor (bir VPS + domain gerektirir). Kurulum adımları için repo geçmişindeki önceki README versiyonuna bakabilirsin.
